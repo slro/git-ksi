@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+
+import sys, os
+from hashlib import sha256
+from getpass import getpass
+from signal import signal, SIGINT, SIG_IGN
+from subprocess import check_output, check_call, CalledProcessError
+
+
+class KSICommunicator(object):
+
+    def __init__(self, uname, upass):
+        self.username = uname
+        self.password = upass
+
+    def sign_with_ksi(self, data_str):
+        pass # vsmysle code here
+
+    @staticmethod
+    def get_data_digest_sha256(data_str):
+        return sha256(data_str.encode()).hexdigest()
+
+
+# set ctrl-c handler to prevent user from
+# accidentally committing without signing
+def ctrl_c_handler(signum, frame):
+    if input(">> Are you sure you want to quit a signing process? (Y/n): ") == 'Y':
+        exit(0)
+signal(SIGINT, ctrl_c_handler)
+
+# pipe command to git executable
+try:
+    check_call(['git'] + sys.argv[1:])
+except CalledProcessError:
+    exit(1)
+
+# if commit was made sign it with ksi
+if sys.argv[1] == 'commit':
+
+    # retrieve SHA1 commit hash
+    commit_checksum = check_output(["git", "show"])[7:47]
+
+    # temporarily disable ctrl-c while input is active
+    s = signal(SIGINT, SIG_IGN)
+
+    # ask user for credentials
+    print(" ** Please enter your KSI credentials to sign this commit")
+    username = input("username: ")
+    password = getpass("password: ")
+
+    # enable ctrl-c back
+    signal(SIGINT, s)
+
+    # TODO: proceed with signing
