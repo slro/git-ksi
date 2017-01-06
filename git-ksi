@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 
+import json
+from base64 import b64encode
 import sys, os
+import requests
 from hashlib import sha256
 from getpass import getpass
 from signal import signal, SIGINT, SIG_IGN
 from subprocess import check_output, check_call, CalledProcessError
+
+URL_BASE = "https://%s@tryout-catena-db.guardtime.net/api/v1/signatures"
+HEADER = {"Content-Type": "application/json", "Accept": "application/json"}
+SIGN_JSON_BASE = {'dataHash': {'algorithm': 'SHA-256', 'value': None}, 'metadata': {}, 'level': 0}
+ID_ASSIGN_JSON_BASE = {"metadata": {}, "signature": None}
 
 
 class KSICommunicator(object):
@@ -12,13 +20,29 @@ class KSICommunicator(object):
     def __init__(self, uname, upass):
         self.username = uname
         self.password = upass
+        self.uurl = URL_BASE % ("%s:%s" % (uname, upass))
 
     def sign_with_ksi(self, data_str):
-        pass # vsmysle code here
+        data_hash = self.__get_data_digest_sha256(data_str=data_str)
+        req_json = SIGN_JSON_BASE.copy()
+        req_json['dataHash']['value'] = data_hash
+        r = requests.post(self.uurl, headers=HEADER, json=req_json)
+        return json.loads(r.text)['signature']
+
+    def assign_uid_to_signature(self, signature):
+        req_json = ID_ASSIGN_JSON_BASE.copy()
+        req_json['signature'] = signature
+        r = requests.put(self.uurl, headers=HEADER, json=req_json)
+        return json.loads(r.text)['id']
+
+    def get_signature(self, id):
+        url_id = self.uurl + "/" + id
+        r = requests.get(url_id, headers=HEADER)
+        return json.loads(r.text)['signature']
 
     @staticmethod
-    def get_data_digest_sha256(data_str):
-        return sha256(data_str.encode()).hexdigest()
+    def __get_data_digest_sha256(data_str):
+        return b64encode(sha256(data_str).digest()).decode()
 
 
 # set ctrl-c handler to prevent user from
@@ -51,4 +75,5 @@ if sys.argv[1] == 'commit':
     # enable ctrl-c back
     signal(SIGINT, s)
 
-    # TODO: proceed with signing
+    ksi_com = KSICommunicator(username, password)
+    print(ksi_com.sign_with_ksi(commit_checksum))
