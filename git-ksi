@@ -14,7 +14,7 @@ class KSICommunicator(object):
         self.password = upass
 
     def sign_with_ksi(self, data_str):
-        pass
+        pass # vsmysle code here
 
     @staticmethod
     def get_data_digest_sha256(data_str):
@@ -50,3 +50,5 @@ if sys.argv[1] == 'commit':
 
     # enable ctrl-c back
     signal(SIGINT, s)
+
+    # TODO: proceed with signing
