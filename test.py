@@ -3,13 +3,17 @@
 import requests
 import json
 
-url = "https://tryout-catena-ksi.guardtime.net/api/v1/signature"
+credentials = '"ot.S1xpgT":"xRKHrjcSFTw6"'
+
+url = "https://tryout-catena-db.guardtime.net/api/v1/signatures"
 headers = {"Content-Type": "application/json",
            "Accept": "application/json",
-           "Authorization":'Basic "ot.S1xpgT:xRKHrjcSFTw6"'}
+           "Authorization":'Basic '+credentials}
 
-with open("dataHash.json") as json_file:
-    data = json.load(json_file)
 
-r = requests.post(url,headers=headers,json=data)
-print(r.text)
+def create_new_signature(hash, level):
+    json_for_signature_creation = {'dataHash': {'algorithm':'SHA-256', 'value': hash}, 'metadata': {}, 'level': 0}
+    r = requests.post(url, headers=headers, json=json_for_signature_creation)
+    return json.loads(r.text)
+
+#print(create_new_signature("1pUmHbQszLgVWYKsoRxx2QdzYa49TKAbO8y/QlbpDn4=",0))
