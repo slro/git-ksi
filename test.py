@@ -16,4 +16,18 @@ def create_new_signature(hash, level):
     r = requests.post(url, headers=headers, json=json_for_signature_creation)
     return json.loads(r.text)
 
-#print(create_new_signature("1pUmHbQszLgVWYKsoRxx2QdzYa49TKAbO8y/QlbpDn4=",0))
+def assign_uid_to_generated_signature(signature):
+    id_assignin_json = {"metadata":{},"signature": signature}
+    r = requests.put(url, headers=headers, json=id_assignin_json)
+    return json.loads(r.text)
+
+def get_signature(id):
+    url_id= url+"/"+id
+    r = requests.get(url_id, headers=headers)
+    return json.loads(r.text)
+
+
+response = create_new_signature("1pUmHbQszLgVWYKsoRxx2QdzYa49TKAbO8y/QlbpDn4=",0)
+
+print(assign_uid_to_generated_signature(response['signature']))
+print(get_signature(response['id']))
