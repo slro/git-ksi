@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from subprocess import check_call, CalledProcessError
+from subprocess import check_output, check_call, CalledProcessError
 
 # pipe command to git executable
 try:
@@ -11,4 +11,7 @@ except CalledProcessError:
 
 # if commit was made sign it with ksi
 if sys.argv[1] == 'commit':
-    print('sign with ksi')
+
+    # retrieve SHA1 commit hash
+    commit_checksum = check_output(["git", "show"])[7:47]
+    
