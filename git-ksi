@@ -17,6 +17,28 @@ SIGN_JSON_BASE = {'dataHash': {'algorithm': 'SHA-256', 'value': None}, 'metadata
 ID_ASSIGN_JSON_BASE = {"metadata": {}, "signature": None}
 
 
+class Exception401(Exception):
+    """ Wrong credentials a.k.a. access denied """
+    pass
+
+
+class Exception404(Exception):
+    """ The user tried to access a resource which is not found """
+    pass
+
+
+class Exception429(Exception):
+    """ The user has performed too many requests per second """
+    pass
+
+
+class Exception500(Exception):
+    """ Internal server error
+    Implies that something went wrong that is not under end user's control.
+    """
+    pass
+
+
 class CLIDecor:
     """ CLI output decoration constants """
 
@@ -59,6 +81,10 @@ class KSICommunicator(object):
         req_json['dataHash']['value'] = data_hash
         req_json['metadata']['Author'] = author
         r = requests.post(self.uurl, headers=HEADER, json=req_json)
+
+        # verify whether request was successful
+        self.__verify_response(r)
+
         return json.loads(r.text)['id']
 
     def get_hash_by_guid(self, guid):
@@ -72,6 +98,10 @@ class KSICommunicator(object):
 
         url_id = self.uurl + "/" + guid
         r = requests.get(url_id, headers=HEADER)
+
+        # verify whether request was successful
+        self.__verify_response(r)
+
         return json.loads(r.text)['details']['dataHash']['value']
 
     def verify_commit_with_guid(self, guid, data):
@@ -99,6 +129,26 @@ class KSICommunicator(object):
         """
 
         return b64encode(sha256(data).digest()).decode()
+
+    @staticmethod
+    def __verify_response(resp):
+        """ Verifies response from a Catena DB
+
+        :raise Exception404, Exception429, Exception500
+
+        """
+        if resp.status_code == 401:
+            print(" >> wrong credentials!")
+            raise Exception401
+        if resp.status_code == 404:
+            print(" >> no such commit in Catena DB!")
+            raise Exception404
+        elif resp.status_code == 429:
+            print(" >> too many requests per second to Catena middleware")
+            raise Exception429
+        elif resp.status_code == 500:
+            print(" >> internal server error")
+            raise Exception500
 
 
 def get_user_credentials():
@@ -166,15 +216,20 @@ def init_verify_process(branch):
 
     :return: list: 1: boolean verification
              result; 2: string commit author
+
     """
 
     # update remote branch index
     call(['git', 'fetch'])
 
     # get information about commit to verify
-    output = check_output(['git', 'log', 'origin/%s' % branch])
-    info_lst = parse_commit_info(output)
+    try:
+        output = check_output(['git', 'log', 'origin/%s' % branch])
+    except CalledProcessError:
+        print(" >> git %sunable to get remote commit information%s!" % (CLIDecor.YELLOW, CLIDecor.END))
+        exit(1)
 
+    info_lst = parse_commit_info(output)
     return [KSICommunicator(*get_user_credentials()).verify_commit_with_guid(get_guid(), info_lst[0]), info_lst[1]]
 
 
@@ -209,10 +264,13 @@ if sys.argv[1] == 'pull':
             # pulling successfully verified commit
             call(['git'] + sys.argv[1:])
             exit(0)
-        print(" >> verification %sfailed%s! Don't force-pull this commit!" % (CLIDecor.RED, CLIDecor.END))
-    except:  # TODO: narrow down exception types
+    except (Exception401, Exception429, Exception500):
         print(" >> verification is %snot possible%s due to a technical error. Nothing was pulled." %
               (CLIDecor.YELLOW, CLIDecor.END))
+    except Exception404:
+        pass
+
+    print(" >> verification %sfailed%s! Don't force-pull this commit!" % (CLIDecor.RED, CLIDecor.END))
 else:
     # pipe command to git executable
     try:
@@ -229,7 +287,7 @@ else:
                 print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
             else:
                 print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
-        except:  # TODO: narrow down exception types
+        except (Exception401, Exception429, Exception500):
             umesg = " >> %s%sfailed%s to sign! Run '%sgit-ksi sign%s' to sign this commit!"
             if sys.argv[1] == 'commit':
                 print(umesg % ('committed but ', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
