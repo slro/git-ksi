@@ -112,6 +112,7 @@ class KSICommunicator(object):
 
         :return: boolean verification result
         """
+
         if self.__get_data_digest_sha256(data) == self.get_hash_by_guid(guid):
             return True
         return False
