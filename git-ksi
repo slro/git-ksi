@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import re
 import sys
 import json
 from base64 import b64encode
@@ -14,6 +15,17 @@ URL_BASE = "https://%s@tryout-catena-db.guardtime.net/api/v1/signatures"
 HEADER = {"Content-Type": "application/json", "Accept": "application/json"}
 SIGN_JSON_BASE = {'dataHash': {'algorithm': 'SHA-256', 'value': None}, 'metadata': {}, 'level': 0}
 ID_ASSIGN_JSON_BASE = {"metadata": {}, "signature": None}
+
+
+class CLIDecor:
+    """ CLI output decoration constants """
+
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
 
 
 class KSICommunicator(object):
@@ -32,15 +44,15 @@ class KSICommunicator(object):
         self.password = upass
         self.uurl = URL_BASE % ("%s:%s" % (uname, upass))
 
-    def sign_with_ksi(self, data_str):
+    def sign_with_ksi(self, data):
         """ Sign specified string with KSI
 
-        :param data_str: ?string? to sign with KSI
-        :return: ####string#?#?#?# KSI signature
+        :param data: bytes to sign with KSI
+        :return: string KSI signature
 
         """
 
-        data_hash = self.__get_data_digest_sha256(data_str=data_str)
+        data_hash = self.__get_data_digest_sha256(data=data)
         req_json = SIGN_JSON_BASE.copy()
         req_json['dataHash']['value'] = data_hash
         r = requests.post(self.uurl, headers=HEADER, json=req_json)
@@ -49,7 +61,7 @@ class KSICommunicator(object):
     def assign_uid_to_signature(self, signature):
         """ Assign UID to a signature in Catena DB
 
-        :param signature: ####string#?#?#?# KSI signature
+        :param signature: string KSI signature
         :return: string UID of a signature in Catena DB
 
         """
@@ -62,8 +74,9 @@ class KSICommunicator(object):
     def get_signature(self, id):
         """ Get KSI signature by it's UID from Catena DB
 
-        :param id - ####string#?#?#?# UID of a signature to get from Catena DB
-        :return: ####string#?#?#?# KSI signature
+        :param id - string UID of a signature
+                    to get from Catena DB
+        :return: string KSI signature
 
         """
 
@@ -71,22 +84,46 @@ class KSICommunicator(object):
         r = requests.get(url_id, headers=HEADER)
         return json.loads(r.text)['signature']
 
-    @staticmethod
-    def __get_data_digest_sha256(data_str):
-        """ Hash bytes-like object? ??? ? """
+    def verify_commit_with_uid(self, uid, data):
+        """ Verify commit with checksum and UID of corresponding signature
 
-        return b64encode(sha256(data_str).digest()).decode()
+        :param uid: string UID of a signature to retrieve
+        :param data: bytes object to verify (commit checksum)
+
+        :return: ???
+        """
+
+        pass
+        # TODO: vsmysle verify this
+
+    @staticmethod
+    def __get_data_digest_sha256(data):
+        """ Hash bytes object with SHA-256
+
+        Hashes bytes object with SHA-256, encodes
+        in base64 and returns result as a string
+
+        :param data: bytes object to hash
+        :return: string base64 encoded SHA-256
+                 digest of input
+        """
+
+        return b64encode(sha256(data).digest()).decode()
 
 
 def init_sign_process():
     """ Initiate signing process
 
-    Get KSI credentials from user and GIT
+    Get KSI credentials from user and checksum of
+    the last GIT commit. Then initialize signing
+    process.
 
     """
 
-    # retrieve SHA1 commit hash
-    commit_checksum = check_output(["git", "show"])[7:47]
+    # retrieve SHA1 commit hash and user details
+    output = check_output(["git", "show"])
+    commit_checksum = output[7:47]
+    # TODO: fetch user details
 
     # temporarily disable ctrl-c while input is active
     s = signal(SIGINT, SIG_IGN)
@@ -99,9 +136,18 @@ def init_sign_process():
     # enable ctrl-c back
     signal(SIGINT, s)
 
-    ksi_com = KSICommunicator(username, password)
-    ksi_com.sign_with_ksi(commit_checksum)
+    return KSICommunicator(username, password).sign_with_ksi(commit_checksum)
 
+
+def init_verify_process():
+    """ Initiate verification process
+
+    ###
+
+    :return: ???
+    """
+
+    # TODO: vsmysle 
 
 def set_ctrl_c_handler(signum, frame):
     """ Specify ctrl-c handler to prevent interruption of signing process """
@@ -118,16 +164,20 @@ try:
 except CalledProcessError:
     exit(1)
 
-# if commit was made sign it with ksi
-if sys.argv[1] == 'commit':
+# if commit was made or user requested sign it with ksi
+if sys.argv[1] == 'commit' or sys.argv[1] == 'sign':
+    try:
+        uid = init_sign_process()
+        umesg = ">> %ssigned %ssuccessfully%s! UID: %s%s%s"
+        if sys.argv[1] == 'commit':
+            print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, uid, CLIDecor.END))
+        else:
+            print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, uid, CLIDecor.END))
+    except:  # TODO: narrow down exception types
+        umesg = ">> %s%sfailed%s signed! Run %sgit-ksi sign%s to sign this commit!"
+        if sys.argv[1] == 'commit':
+            print(umesg % ('committed but ', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
+        else:
+            print(umesg % ('', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
+if sys.argv[1] == 'pull':
     pass
-
-elif sys.argv[1] == 'sign':
-    # sign last commit (usually because
-    # of commit hook has failed)
-    pass
-
-
-
-
-
