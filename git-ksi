@@ -72,7 +72,7 @@ class KSICommunicator(object):
 
         url_id = self.uurl + "/" + guid
         r = requests.get(url_id, headers=HEADER)
-        return json.loads(r.text)['dataHash']['value']
+        return json.loads(r.text)['details']['dataHash']['value']
 
     def verify_commit_with_guid(self, guid, data):
         """ Verify commit with checksum and UID of corresponding signature
@@ -113,7 +113,7 @@ def get_user_credentials():
     s = signal(SIGINT, SIG_IGN)
 
     # ask user for credentials
-    print(" ** Please enter your KSI credentials to sign this commit")
+    print(" ** Please enter your KSI credentials")
     username = input("username: ")
     password = getpass("password: ")
 
@@ -205,10 +205,14 @@ if sys.argv[1] == 'pull':
         if verify_res[0]:
             print(" >> verification %ssuccessful%s! Commit author: %s%s%s" %
                   (CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, verify_res[1], CLIDecor.END))
+
+            # pulling successfully verified commit
+            call(['git'] + sys.argv[1:])
             exit(0)
         print(" >> verification %sfailed%s! Don't force-pull this commit!" % (CLIDecor.RED, CLIDecor.END))
     except:  # TODO: narrow down exception types
-        print(" >> verification is %snot possible%s due to a technical error" % (CLIDecor.YELLOW, CLIDecor.END))
+        print(" >> verification is %snot possible%s due to a technical error. Nothing was pulled." %
+              (CLIDecor.YELLOW, CLIDecor.END))
 else:
     # pipe command to git executable
     try:
