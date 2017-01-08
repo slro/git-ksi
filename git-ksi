@@ -61,7 +61,7 @@ class KSICommunicator(object):
         r = requests.post(self.uurl, headers=HEADER, json=req_json)
         return json.loads(r.text)['id']
 
-    def get_hash_by_id(self, guid):
+    def get_hash_by_guid(self, guid):
         """ Get KSI signature by it's UID from Catena DB
 
         :param guid - string GUID of a signature
@@ -72,7 +72,20 @@ class KSICommunicator(object):
 
         url_id = self.uurl + "/" + guid
         r = requests.get(url_id, headers=HEADER)
-        return json.loads(r.text)['signature']
+        return json.loads(r.text)['dataHash']['value']
+
+    def verify_commit_with_uid(self, guid, data):
+        """ Verify commit with checksum and UID of corresponding signature
+
+        :param uid: string UID of a signature to retrieve
+        :param data: bytes object to verify (commit checksum)
+
+        :return: ???
+        """
+        if self.__get_data_digest_sha256(data) == self.get_hash_by_guid(guid):
+            return True
+        else:
+            return False
 
     @staticmethod
     def __get_data_digest_sha256(data):
