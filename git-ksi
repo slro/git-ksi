@@ -8,7 +8,7 @@ import requests
 from hashlib import sha256
 from getpass import getpass
 from signal import signal, SIGINT, SIG_IGN
-from subprocess import check_output, check_call, CalledProcessError
+from subprocess import check_output, check_call, CalledProcessError, call
 
 # Catena communication constants
 URL_BASE = "https://%s@tryout-catena-db.guardtime.net/api/v1/signatures"
@@ -74,18 +74,17 @@ class KSICommunicator(object):
         r = requests.get(url_id, headers=HEADER)
         return json.loads(r.text)['dataHash']['value']
 
-    def verify_commit_with_uid(self, guid, data):
+    def verify_commit_with_guid(self, guid, data):
         """ Verify commit with checksum and UID of corresponding signature
 
-        :param uid: string UID of a signature to retrieve
+        :param guid: string GUID of a signature to retrieve
         :param data: bytes object to verify (commit checksum)
 
-        :return: ???
+        :return: boolean verification result
         """
         if self.__get_data_digest_sha256(data) == self.get_hash_by_guid(guid):
             return True
-        else:
-            return False
+        return False
 
     @staticmethod
     def __get_data_digest_sha256(data):
@@ -102,19 +101,13 @@ class KSICommunicator(object):
         return b64encode(sha256(data).digest()).decode()
 
 
-def init_sign_process():
-    """ Initiate signing process
+def get_user_credentials():
+    """ Get KSI credentials from user CLI input
 
-    Get KSI credentials from user and checksum of
-    the last GIT commit. Then initialize signing
-    process.
+    :return: list of two strings: 0: username,
+             1: password
 
     """
-
-    # retrieve SHA1 commit hash and user details
-    output = check_output(["git", "show"])
-    commit_checksum = output[7:47]
-    author = re.search(r"Author:.+", output.decode()).group(0)[8:]
 
     # temporarily disable ctrl-c while input is active
     s = signal(SIGINT, SIG_IGN)
@@ -127,18 +120,74 @@ def init_sign_process():
     # enable ctrl-c back
     signal(SIGINT, s)
 
-    return KSICommunicator(username, password).sign_with_ksi(commit_checksum, author)
+    return [username, password]
 
 
-def init_verify_process():
-    """ Initiate verification process
+def get_guid():
+    """ Get GUID from user CLI input
 
-    ###
+    :return: string GUID
 
-    :return: ???
     """
 
-    # TODO: vsmysle 
+    # temporarily disable ctrl-c while input is active
+    s = signal(SIGINT, SIG_IGN)
+
+    # ask user for GUID
+    print(" ** Please enter GUID of the commit you are pulling: ")
+    guid = input("GUID: ")
+
+    # enable ctrl-c back
+    signal(SIGINT, s)
+
+    return guid
+
+
+def init_sign_process():
+    """ Initiate signing process
+
+    Get KSI credentials from user and checksum of
+    the last GIT commit. Then initialize signing
+    process.
+
+    """
+
+    # retrieve SHA1 commit hash and user details
+    output = check_output(["git", "show"])
+
+    return KSICommunicator(*get_user_credentials()).sign_with_ksi(*parse_commit_info(output))
+
+
+def init_verify_process(branch):
+    """ Initiate verification process
+
+    Update remote branches index and ask for
+    GUID to use for a verification
+
+    :return: list: 1: boolean verification
+             result; 2: string commit author
+    """
+
+    # update remote branch index
+    call(['git', 'fetch'])
+
+    # get information about commit to verify
+    output = check_output(['git', 'log', 'origin/%s' % branch])
+    info_lst = parse_commit_info(output)
+
+    return [KSICommunicator(*get_user_credentials()).verify_commit_with_guid(get_guid(), info_lst[0]), info_lst[1]]
+
+
+def parse_commit_info(output):
+    """ Parse commit checksum and author from input
+
+    :param output: bytes to parse
+    :return: list of bytes and string,
+             0: commit checksum, 1: author
+    """
+
+    return [output[7:47], re.search(r"Author:.+", output.decode()).group(0)[8:]]
+
 
 def set_ctrl_c_handler(signum, frame):
     """ Specify ctrl-c handler to prevent interruption of signing process """
@@ -149,26 +198,37 @@ def set_ctrl_c_handler(signum, frame):
 # set ctrl-c handler
 signal(SIGINT, set_ctrl_c_handler)
 
-# pipe command to git executable
-try:
-    check_call(['git'] + sys.argv[1:])
-except CalledProcessError:
-    exit(1)
-
-# if commit was made or user requested sign it with ksi
-if sys.argv[1] == 'commit' or sys.argv[1] == 'sign':
-    try:
-        guid = init_sign_process()
-        umesg = " >> %ssigned %ssuccessfully%s! GUID: %s%s%s"
-        if sys.argv[1] == 'commit':
-            print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
-        else:
-            print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
-    except:  # TODO: narrow down exception types
-        umesg = " >> %s%sfailed%s to sign! Run '%sgit-ksi sign%s' to sign this commit!"
-        if sys.argv[1] == 'commit':
-            print(umesg % ('committed but ', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
-        else:
-            print(umesg % ('', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
+# are user pulling?
 if sys.argv[1] == 'pull':
-    pass
+    try:
+        verify_res = init_verify_process(sys.argv[3])
+        if verify_res[0]:
+            print(" >> verification %ssuccessful%s! Commit author: %s%s%s" %
+                  (CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, verify_res[1], CLIDecor.END))
+            exit(0)
+        print(" >> verification %sfailed%s! Don't force-pull this commit!" % (CLIDecor.RED, CLIDecor.END))
+    except:  # TODO: narrow down exception types
+        print(" >> verification is %snot possible%s due to a technical error" % (CLIDecor.YELLOW, CLIDecor.END))
+else:
+    # pipe command to git executable
+    try:
+        check_call(['git'] + sys.argv[1:])
+    except CalledProcessError:
+        exit(1)
+
+    # if commit was made or user requested sign it with ksi
+    if sys.argv[1] == 'commit' or sys.argv[1] == 'sign':
+        try:
+            guid = init_sign_process()
+            umesg = " >> %ssigned %ssuccessfully%s! GUID: %s%s%s"
+            if sys.argv[1] == 'commit':
+                print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
+            else:
+                print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
+        except:  # TODO: narrow down exception types
+            umesg = " >> %s%sfailed%s to sign! Run '%sgit-ksi sign%s' to sign this commit!"
+            if sys.argv[1] == 'commit':
+                print(umesg % ('committed but ', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
+            else:
+                print(umesg % ('', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
+
