@@ -44,57 +44,35 @@ class KSICommunicator(object):
         self.password = upass
         self.uurl = URL_BASE % ("%s:%s" % (uname, upass))
 
-    def sign_with_ksi(self, data):
+    def sign_with_ksi(self, data, author):
         """ Sign specified string with KSI
 
         :param data: bytes to sign with KSI
-        :return: string KSI signature
+        :param author: string author of a
+               commit to sign
+        :return: string GUID of a signature in Catena DB
 
         """
 
         data_hash = self.__get_data_digest_sha256(data=data)
         req_json = SIGN_JSON_BASE.copy()
         req_json['dataHash']['value'] = data_hash
+        req_json['metadata']['Author'] = author
         r = requests.post(self.uurl, headers=HEADER, json=req_json)
-        return json.loads(r.text)['signature']
-
-    def assign_uid_to_signature(self, signature):
-        """ Assign UID to a signature in Catena DB
-
-        :param signature: string KSI signature
-        :return: string UID of a signature in Catena DB
-
-        """
-
-        req_json = ID_ASSIGN_JSON_BASE.copy()
-        req_json['signature'] = signature
-        r = requests.put(self.uurl, headers=HEADER, json=req_json)
         return json.loads(r.text)['id']
 
-    def get_signature(self, id):
+    def get_hash_by_id(self, guid):
         """ Get KSI signature by it's UID from Catena DB
 
-        :param id - string UID of a signature
+        :param guid - string GUID of a signature
                     to get from Catena DB
         :return: string KSI signature
 
         """
 
-        url_id = self.uurl + "/" + id
+        url_id = self.uurl + "/" + guid
         r = requests.get(url_id, headers=HEADER)
         return json.loads(r.text)['signature']
-
-    def verify_commit_with_uid(self, uid, data):
-        """ Verify commit with checksum and UID of corresponding signature
-
-        :param uid: string UID of a signature to retrieve
-        :param data: bytes object to verify (commit checksum)
-
-        :return: ???
-        """
-
-        pass
-        # TODO: vsmysle verify this
 
     @staticmethod
     def __get_data_digest_sha256(data):
@@ -123,7 +101,7 @@ def init_sign_process():
     # retrieve SHA1 commit hash and user details
     output = check_output(["git", "show"])
     commit_checksum = output[7:47]
-    # TODO: fetch user details
+    author = re.search(r"Author:.+", output.decode()).group(0)[8:]
 
     # temporarily disable ctrl-c while input is active
     s = signal(SIGINT, SIG_IGN)
@@ -136,7 +114,7 @@ def init_sign_process():
     # enable ctrl-c back
     signal(SIGINT, s)
 
-    return KSICommunicator(username, password).sign_with_ksi(commit_checksum)
+    return KSICommunicator(username, password).sign_with_ksi(commit_checksum, author)
 
 
 def init_verify_process():
@@ -152,7 +130,7 @@ def init_verify_process():
 def set_ctrl_c_handler(signum, frame):
     """ Specify ctrl-c handler to prevent interruption of signing process """
 
-    if input(">> Are you sure you want to quit a signing process? (Y/n): ") == 'Y':
+    if input(" >> Are you sure you want to quit a signing process? (Y/n): ") == 'Y':
         exit(0)
 
 # set ctrl-c handler
@@ -167,14 +145,14 @@ except CalledProcessError:
 # if commit was made or user requested sign it with ksi
 if sys.argv[1] == 'commit' or sys.argv[1] == 'sign':
     try:
-        uid = init_sign_process()
-        umesg = ">> %ssigned %ssuccessfully%s! UID: %s%s%s"
+        guid = init_sign_process()
+        umesg = " >> %ssigned %ssuccessfully%s! GUID: %s%s%s"
         if sys.argv[1] == 'commit':
-            print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, uid, CLIDecor.END))
+            print(umesg % ('committed and ', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
         else:
-            print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, uid, CLIDecor.END))
+            print(umesg % ('', CLIDecor.GREEN, CLIDecor.END, CLIDecor.BOLD, guid, CLIDecor.END))
     except:  # TODO: narrow down exception types
-        umesg = ">> %s%sfailed%s signed! Run %sgit-ksi sign%s to sign this commit!"
+        umesg = " >> %s%sfailed%s to sign! Run '%sgit-ksi sign%s' to sign this commit!"
         if sys.argv[1] == 'commit':
             print(umesg % ('committed but ', CLIDecor.RED, CLIDecor.END, CLIDecor.BOLD, CLIDecor.END))
         else:
