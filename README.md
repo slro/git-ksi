@@ -25,6 +25,11 @@ git-ksi commit -m '<your commit message>'
 
 # initialize commit verification with KSI
 git-ksi pull origin <branch_to_pull_from>
+
+# if signing failed for some external reason 
+# but commit was made retry signature creation
+# process for the last commit made
+git-ksi sign
 ```
 
 During a signing/verification process you'll be asked your KSI credentials and during verification you also have to provide a Catena DB commit GUID that is provided after successfully signing a commit.
