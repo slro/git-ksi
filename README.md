@@ -35,6 +35,6 @@ git-ksi sign
 During a signing/verification process you'll be asked your KSI credentials and during verification you also have to provide a Catena DB commit GUID that is provided after successfully signing a commit.
 
 # Contact
-This is a rather 'test' project and if the one has any questions they can be forwarded to our development team (contacts can be found derectly on GitHub). Any bugs and requests belong to issues tab of this repository.
+This is a rather 'test' project so in case of any questions forward them to our development team (contacts can be found derectly on GitHub). Any bugs and requests belong to issues tab of this repository.
 
 ### Have a nice time hacking!
